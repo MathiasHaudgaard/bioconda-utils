@@ -2,6 +2,7 @@ from optparse import OptionParser
 import subprocess as sp
 import re
 from itertools import zip_longest
+import argparse
 
 INVALID_NAME_MAP = {
     'r-edger': 'bioconductor-edger',
@@ -50,12 +51,12 @@ def clean_build_file(package, no_windows):
     path = package + '/build.sh'
     with open(path, 'r') as build:
         lines = list(build.readlines())
-        lines = remove_mv(lines)
+        lines = filter_lines_regex(lines, r'^mv\s.*$')  # Remove lines with mv commands
         lines = remove_grep(lines)
         lines = remove_comments(lines)
         lines = remove_empty_lines(lines)
 
-    with open(path, 'w') as build:
+    with open(path + '.c', 'w') as build:
         build.write("".join(lines))
 
 
@@ -65,7 +66,7 @@ def clean_bld_file(package, no_windows):
     path = package + '/bld.bat'
     with open(path, 'r') as bld:
         lines = list(bld.readlines())
-        lines = remove_at(lines)
+        lines = filter_lines_regex(lines, r'^@.*$') # Removes the lines that start with @
         lines = remove_empty_lines(lines)
 
     with open(path, 'w') as bld:
@@ -74,7 +75,12 @@ def clean_bld_file(package, no_windows):
 
 def remove_comments(lines):
     # Removes the lines consisting of only comments
-    return [line for line in lines if (not re.search(r'^\s*#.*$', line))]
+    #return [line for line in lines if (not re.search(r'^\s*#.*$', line))]
+    return [re.sub(r'^\s*#.*$', '', line) for line in lines]
+
+
+def filter_lines_regex(lines, regex):
+    return [line for line in lines if re.search(regex, line)]
 
 
 def remove_empty_lines(lines):
@@ -91,18 +97,6 @@ def remove_empty_lines(lines):
     if cleaned_lines[0].isspace():
         cleaned_lines = cleaned_lines[1:]
     return cleaned_lines
-
-
-def remove_at(lines):
-    # Removes the lines that start with @
-
-    return [line for line in lines if not re.search(r'^@.*$', line)]
-
-
-def remove_mv(lines):
-    # Remove lines with mv commands
-
-    return [line for line in lines if not re.search(r'^mv\s.*$', line)]
 
 
 def add_gpl2(lines):
@@ -141,20 +135,14 @@ def add_maintainers(lines):
 
 def main():
     """ Adding support for arguments here """
-    usage = "usage: %prog [options] arg"
-    parser = OptionParser(usage)
-    parser.add_option('--cran', nargs=2, dest="cran",
-                      help='runs the skeleton on a cran package with parameters: <package> <recipe_dir>')
-    parser.add_option('--no_win', default=False, dest="no_windows", action="store_true",
-                      help='runs the skeleton and removes windows specific information')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('package', help='name of the cran package')
+    parser.add_argument('output_dir', help='output directory for the recipe')
+    parser.add_argument('--no-win', default=False, action="store_true",
+                        help='runs the skeleton and removes windows specific information')
 
-    (options, args) = parser.parse_args()
-
-    if options.cran is not None:
-        packageName = options.cran[0]
-        recipe_dir = options.cran[1]
-        no_windows = options.no_windows
-        write_recipe(packageName, recipe_dir, no_windows=no_windows)
+    args = parser.parse_args()
+    write_recipe(args.package, args.output_dir, no_windows=args.no_win)
 
 
 if __name__ == '__main__':
