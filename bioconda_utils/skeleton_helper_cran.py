@@ -75,7 +75,6 @@ def clean_bld_file(package, no_windows):
 
 def remove_comments(lines):
     # Removes the lines consisting of only comments
-    #return [line for line in lines if (not re.search(r'^\s*#.*$', line))]
     return [re.sub(r'^\s*#.*$', '', line) for line in lines]
 
 
@@ -115,7 +114,7 @@ def add_gpl3(lines):
 
 def remove_grep(lines):
     # Remove lines with grep commands
-    return [line for line in lines if not re.search(r'^grep\s.*$', line)]
+    return [re.sub(r'^grep\s.*$', '', line) for line in lines]
 
 
 def skip_windows32(lines):
