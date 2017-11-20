@@ -8,10 +8,24 @@ INVALID_NAME_MAP = {
     'r-edger': 'bioconductor-edger',
 }
 
+gpl2_short = r"  license_family: GPL2"
+gpl2_long = ("  license_family: GPL2\n  license_file: '{{ environ[\"PREFIX\"] }}" +
+             "\/lib\/R\/share\/licenses\/GPL-2'  # [unix]\n  " +
+             "license_file: '{{ environ[\"PREFIX\"] }}" +
+             "\\\R\\\share\\\licenses\\\GPL-2'  # [win]")
+
+gpl3_short = r"  license_family: GPL3"
+gpl3_long = ("  license_family: GPL3\n  license_file: '{{ environ[\"PREFIX\"] }}" +
+             "\/lib\/R\/share\/licenses\/GPL-3'  # [unix]\n  " +
+             "license_file: '{{ environ[\"PREFIX\"] }}" +
+             "\\\R\\\share\\\licenses\\\GPL-3'  # [win]")
+
+win32_string = 'number: 0\n  skip: true  # [win32]'
+
 
 def write_recipe(package, recipe_dir='.', no_windows=True, config=None, force=False, bioc_version=None,
                  pkg_version=None, versioned=False, ):
-        sp.call(['conda skeleton cran '+ package + ' --output-dir ' + recipe_dir], shell=True)
+        sp.call(['conda skeleton cran ' + package + ' --output-dir ' + recipe_dir], shell=True)
         clean_skeleton_files(recipe_dir + '/r-' + package, no_windows)
 
 
@@ -24,20 +38,19 @@ def clean_skeleton_files(package, no_windows):
 
 
 def clean_yaml_file(package, no_windows):
-    lines = []
     path = package + '/meta.yaml'
     with open(path, 'r') as yaml:
         lines = list(yaml.readlines())
-        lines = remove_comments(lines)
+        lines = filter_lines_regex(lines, r'^\s*#.*$', '')  # Removes the lines consisting of only comments
         lines = remove_empty_lines(lines)
-        lines = remove_file_licences(lines)
-        lines = add_gpl2(lines)
-        lines = add_gpl3(lines)
+        lines = filter_lines_regex(lines, r' [+|] file LICEN[SC]E', '')  # remove file license
+        lines = filter_lines_regex(lines, gpl2_short, gpl2_long)  # add gpl 2
+        lines = filter_lines_regex(lines, gpl3_short, gpl3_long)  # add gpl 3
         if no_windows:
-            lines = skip_windows32(lines)
+            lines = filter_lines_regex(lines,r'number: 0',win32_string)  # Inserts the skip: true # [win32] after number: 0, to skip windows builds
         add_maintainers(lines)
 
-    with open(path, 'w') as yaml:
+    with open(path + '.c', 'w') as yaml:
         out = "".join(lines)
         out = out.replace('{indent}', '\n    - ')
         for wrong, correct in INVALID_NAME_MAP.items():
@@ -51,12 +64,12 @@ def clean_build_file(package, no_windows):
     path = package + '/build.sh'
     with open(path, 'r') as build:
         lines = list(build.readlines())
-        lines = filter_lines_regex(lines, r'^mv\s.*$')  # Remove lines with mv commands
-        lines = remove_grep(lines)
-        lines = remove_comments(lines)
+        lines = filter_lines_regex(lines, r'^mv\s.*$', '')  # Remove lines with mv commands
+        lines = filter_lines_regex(lines, r'^grep\s.*$', '')  # Remove lines with grep commands
+        lines = filter_lines_regex(lines, r'^\s*#.*$', '')  # Removes the lines consisting of only comments
         lines = remove_empty_lines(lines)
 
-    with open(path + '.c', 'w') as build:
+    with open(path, 'w') as build:
         build.write("".join(lines))
 
 
@@ -66,20 +79,15 @@ def clean_bld_file(package, no_windows):
     path = package + '/bld.bat'
     with open(path, 'r') as bld:
         lines = list(bld.readlines())
-        lines = filter_lines_regex(lines, r'^@.*$') # Removes the lines that start with @
+        lines = filter_lines_regex(lines, r'^@.*$', '')  # Removes the lines that start with @
         lines = remove_empty_lines(lines)
 
     with open(path, 'w') as bld:
         bld.write("".join(lines))
 
 
-def remove_comments(lines):
-    # Removes the lines consisting of only comments
-    return [re.sub(r'^\s*#.*$', '', line) for line in lines]
-
-
-def filter_lines_regex(lines, regex):
-    return [line for line in lines if re.search(regex, line)]
+def filter_lines_regex(lines, regex, substitute):
+    return [re.sub(regex, substitute, line) for line in lines]
 
 
 def remove_empty_lines(lines):
@@ -96,34 +104,6 @@ def remove_empty_lines(lines):
     if cleaned_lines[0].isspace():
         cleaned_lines = cleaned_lines[1:]
     return cleaned_lines
-
-
-def add_gpl2(lines):
-    return [re.sub(r"  license_family: GPL2", "  license_family: GPL2\n  license_file: '{{ environ[\"PREFIX\"] }}"
-                                              "\/lib\/R\/share\/licenses\/GPL-2'  # [unix]\n  "
-                                              "license_file: '{{ environ[\"PREFIX\"] }}"
-                                              "\\\R\\\share\\\licenses\\\GPL-2'  # [win]", line) for line in lines]
-
-
-def add_gpl3(lines):
-    return [re.sub(r"  license_family: GPL3", "  license_family: GPL3\n  license_file: '{{ environ[\"PREFIX\"] }}"
-                                              "\/lib\/R\/share\/licenses\/GPL-3'  # [unix]\n  "
-                                              "license_file: '{{ environ[\"PREFIX\"] }}"
-                                              "\\\R\\\share\\\licenses\\\GPL-3'  # [win]", line) for line in lines]
-
-
-def remove_grep(lines):
-    # Remove lines with grep commands
-    return [re.sub(r'^grep\s.*$', '', line) for line in lines]
-
-
-def skip_windows32(lines):
-    # Inserts the skip: true # [win32] after number: 0, to skip windows builds
-    return [re.sub(r'number: 0', 'number: 0\n  skip: true  # [win32]', line) for line in lines]
-
-
-def remove_file_licences(lines):
-    return [re.sub(r' [+|] file LICEN[SC]E', '', line) for line in lines]
 
 
 def add_maintainers(lines):
